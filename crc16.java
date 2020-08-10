@@ -1,8 +1,15 @@
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 
 public class crc16 {
 	
-	static String filelocation = "C:\\Users\\enderk2\\Documents\\Dolphin Emulator\\Wii\\title\\00010000\\53583445\\data\\monado03";
+	private GUI gui;
+	
+	public crc16(GUI gui) {
+		this.gui = gui;
+	}
+	
+	static String fileLocation = "C:\\Users\\enderk2\\Documents\\Dolphin Emulator\\Wii\\title\\00010000\\53583445\\data\\monado03";
 	
 	final static int[][] sections = 
 			{{0x20, 0x9CA0},     // THUM 0
@@ -20,14 +27,15 @@ public class crc16 {
 	
 	final static int[] checksums = {0x1E, 0xA02E, 0xB25E, 0x11EAE, 0x11EDE, 0x11F2E, 0x11F5E, 0x2408E, 0x240BE, 0x240EE, 0x2449E, 0x248AE};
 	final static String[] sectionNames = {"THUM", "FLAG", "GAME", "TIME", "PCPM", "CAMD", "ITEM", "WTHR", "SNDS", "MINE", "TBOX", "OPTD"};
+	
+	static byte[] saveFile = new byte[0x28000];
 			
 	// implemented from http://www.java2s.com/Code/Java/File-Input-Output/Readbytesanddisplaytheirhexadecimalvalues.htm
-	public static byte[] readFile() throws Exception {
-	    FileInputStream fin = new FileInputStream(filelocation);
+	public static void readFile(String fileLocation) throws Exception {
+	    FileInputStream fin = new FileInputStream(fileLocation);
 
 	    int len;
 	    byte data[] = new byte[16];
-	    byte savefile[] = new byte[163840];
 	    int currIndex = 0;
 
 	    // Read bytes until EOF is encountered.
@@ -35,13 +43,12 @@ public class crc16 {
 	      len = fin.read(data);
 	      for (int j = 0; j < len; j++) {
 	        //System.out.printf("%02X ", data[j]);
-	    	savefile[currIndex] = data[j];
+	    	saveFile[currIndex] = data[j];
 	    	currIndex++;
 	      }
-	    } while (len != -1);
+	    } while (currIndex < 0x248f0);
 	    
 	    fin.close();
-	    return savefile;
 	  }
 	
 	// implemented from https://stackoverflow.com/questions/140131/convert-a-string-representation-of-a-hex-dump-to-a-byte-array-using-java
@@ -55,27 +62,20 @@ public class crc16 {
 	    return data;
 	}
 	
-	public static void main(String[] args) { 
+	public void computeCRC16() {
 		
-		String location = "";
-		for (int i = 0; i < args.length; i++) {
-			location += args[i] + " ";
-		}
-		location = location.trim();
-
-		
-		byte savefile[] = new byte[163840]; // init save file byte array
+		boolean isModified = false;
 		
 		try {
-			savefile = readFile(); // read file and save into byte array
+			readFile(fileLocation); // read file and save into byte array
 		}
 		catch (Exception e) {
 			System.out.println("Error: " + e); // if read file method throws error
 		}
 		
-		String hexFile[] = new String[163840]; // init hex file array
-		for (int i = 0; i < savefile.length; i++) {
-	        hexFile[i] = String.format("%02X", savefile[i]); // convert byte to string hex representation array
+		String hexFile[] = new String[0x248f0]; // init hex file array
+		for (int i = 0; i < hexFile.length; i++) {
+	        hexFile[i] = String.format("%02X", saveFile[i]); // convert byte to string hex representation array
 	    }
 		
 		// implemented from https://introcs.cs.princeton.edu/java/61data/CRC16.java
@@ -114,7 +114,7 @@ public class crc16 {
             0x4400, 0x84C1, 0x8581, 0x4540, 0x8701, 0x47C0, 0x4680, 0x8641,
             0x8201, 0x42C0, 0x4380, 0x8341, 0x4100, 0x81C1, 0x8081, 0x4040,
         };
-
+        
         for (int k = 0; k < sectionNames.length; k++) {
         	String input = "";
         	for (int i = sections[k][0]; i < sections[k][1]; i++) {
@@ -127,9 +127,48 @@ public class crc16 {
         	for (byte b : bytes) {
         		crc = (crc >>> 8) ^ table[(crc ^ b) & 0xff];
         	}
-
-        	System.out.println(sectionNames[k] + " CRC16 = " + Integer.toHexString(crc));
+        	
+        	int c1 = saveFile[checksums[k]];
+        	int c2 = saveFile[checksums[k] + 1];
+        	if (c1 < 0) c1 += 256; // had to do this because Integer.toHexString messes up with negatives
+        	if (c2 < 0) c2 += 256;
+        	
+        	if (c2 < 16 && c2 != 0) {
+        		System.out.println(sectionNames[k] + " Computed CRC16 = " + Integer.toHexString(crc) + " | Checksum in File = " + Integer.toHexString(c1) + "0" + Integer.toHexString(c2)); // does not show 0's correctly
+        		gui.addText(sectionNames[k] + " Computed CRC16 = " + Integer.toHexString(crc) + " | Checksum in File = " + Integer.toHexString(c1) + "0" + Integer.toHexString(c2) + "\n");
+        	}
+        	else {
+        		System.out.println(sectionNames[k] + " Computed CRC16 = " + Integer.toHexString(crc) + " | Checksum in File = " + Integer.toHexString(c1) + "" + Integer.toHexString(c2)); // does not show 0's correctly
+        		gui.addText(sectionNames[k] + " Computed CRC16 = " + Integer.toHexString(crc) + " | Checksum in File = " + Integer.toHexString(c1) + "" + Integer.toHexString(c2) + "\n");
+        	}
+        	
+        	if (saveFile[checksums[k]] != (byte) (crc >> 8) || saveFile[checksums[k] + 1] != (byte) (crc)) { // if checksums are different, change saveFile
+        		isModified = true;
+        		System.out.println("Bad checksum");
+        		gui.addText("Fixed Checksum in " + sectionNames[k]);
+        		saveFile[checksums[k]] = (byte) (crc >> 8);
+        		saveFile[checksums[k] + 1] = (byte) (crc);
+        	}
         }
+        if (isModified) {
+        	try {
+        	 writeToFile();
+        	}
+        	catch (Exception e) {
+        		System.out.println("Error writing to file: " + e);
+        	}
+        }
+		
+	}
+	
+	public void writeToFile() throws Exception {
+		FileOutputStream o = new FileOutputStream(fileLocation);
+		o.write(saveFile);
+		o.close();
+	}
+	
+	public void setFileLocation(String f) { 
+		fileLocation = f;
+	}
 
-    }
 }
