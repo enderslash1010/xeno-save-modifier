@@ -4,6 +4,9 @@ The Xenoblade Save modifier fixes checksums after the save file (monado01, monad
 
 # Changelog
 
+## 0.1.0
+### Added
+- Confirmation on correct file header before computing and fixing checksums
 ## 0.0.1
 - Initial Executable
 ### Added
